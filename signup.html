@@ -13,23 +13,17 @@
 <body>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <section class="login-clean">
-        <form id="form" action="/login" method="post">
-            <h2 class="visually-hidden">Login Form</h2>
+        <form id="form" action="/signup" method="post">
+            <h2 class="visually-hidden">SignUp Form</h2>
             <div class="illustration"><img src="/img/hermesIcon.png"></div>
             <div class="mb-3"><input class="form-control" type="text" id="username" name="username" placeholder="Login" required></div>
-            <div class="mb-3"><input class="form-control" type="password" id="password" name="password" placeholder="Password" required></div><button class="btn btn-primary" id="connexion" type="submit">Connexion</button>
-            <div class="mb-3"></div><a class="forgot" href="/signup">Créer un compte ?</a>
+            <div class="mb-3"><input class="form-control" type="password" id="password" name="password" placeholder="Password" required></div><button class="btn btn-primary" id="connexion" type="submit">Inscription</button>
+            <div class="mb-3"></div><a class="forgot" href="/">Se connecter ?</a>
         </form>
     </section>
     <script src="/bootstrap/js/bootstrap.min.js"></script>
     <!--<script src="/socket.io/socket.io.js"></script>
     <script src="/js/index.js"></script>-->
-    <script>
-        $("#form").on("submit", (e) => {
-            sessionStorage.setItem("name", $("#username").val());
-            sessionStorage.setItem("token", Math.random().toString(36).substr(2));
-        });
-    </script>
 </body>
 
 </html>

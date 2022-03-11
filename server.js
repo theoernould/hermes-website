@@ -5,13 +5,45 @@ const http = require('http');
 const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
-let session = require('express-session');
-
+const session = require('express-session');
+const sqlite3 = require('sqlite3').verbose();
+const SQLiteStore = require('connect-sqlite3')(session);
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
-const bcrypt = require('bcrypt')
+const crypto = require('crypto');
 
-app.use(session({resave: true, saveUninitialized: true, secret: 'toz', cookie: { maxAge: 60000 }}));
+let db = new sqlite3.Database('./db/database.db', (err) => {
+    if (err) {
+        console.error(err.message);
+    }
+    console.log('Connected to the users database.');
+});
+
+/*db.run("DROP TABLE IF EXISTS users");
+db.run(`CREATE TABLE IF NOT EXISTS users(username text, password text, salt text)`);*/
+//db.run(`DELETE FROM users`);
+//db.run(`INSERT INTO users(username,password,salt) VALUES(?,?,?)`, ["admin", "admin", ""]);
+
+db.each('SELECT * FROM users', (err, row) => {
+    if (err) {
+        console.error(err.message);
+    }
+    row
+        ? console.log(row.username, row.password)
+        : console.log(`No user found with the id`);
+
+});
+
+
+/* PARTIE IDENTIFICATION */
+
+app.use(session({
+    secret: 'keyboard cat',
+    resave: false,
+    saveUninitialized: false,
+    store: new SQLiteStore({ db: 'sessions.db', dir: './db' })
+}));
+app.use(passport.authenticate('session'));
 
 app.use(express.static(__dirname + "/public", {
     index: false,
@@ -20,128 +52,142 @@ app.use(express.static(__dirname + "/public", {
     maxAge: "30d"
 }));
 
+app.use(session({
+    secret: 'r8q,+&1LM3)CD*zAGpx1xm{NeQhc;#',
+    resave: false,
+    saveUninitialized: true,
+    cookie: { maxAge: 60 * 60 * 1000 } // 1 hour
+}));
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(passport.initialize());
+app.use(passport.session());
+
+passport.use(new LocalStrategy(
+    // function of username, password, done(callback)
+    function (username, password, done) {
+        db.get('SELECT * FROM users WHERE username = ?', [username], function (err, row) {
+            if (err) { return done(err); }
+            if (!row) { return done(null, false, { message: 'Incorrect username or password.' }); }
+
+            crypto.pbkdf2(password, row.salt, 310000, 32, 'sha256', function (err, hashedPassword) {
+                if (err) { return done(err); }
+                if (!crypto.timingSafeEqual(row.password, hashedPassword)) {
+                    return done(null, false, { message: 'Incorrect username or password.' });
+                }
+                return done(null, row);
+            });
+        });
+    }
+));
+
+passport.serializeUser(function (user, cb) {
+    process.nextTick(function () {
+        cb(null, { id: user.id, username: user.username });
+    });
+});
+
+passport.deserializeUser(function (user, cb) {
+    process.nextTick(function () {
+        return cb(null, user);
+    });
+});
+
+app.post('/login', passport.authenticate('local', { failureRedirect: '/' }), function (req, res) {
+    console.log(req.user);
+    res.redirect('/home');
+
+});
+
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/login.html');
 });
 
-app.get('/login', (req, res) => {
-    res.sendFile(__dirname + '/login.html');
+app.post('/signup', function (req, res, next) {
+    let salt = crypto.randomBytes(16);
+    crypto.pbkdf2(req.body.password, salt, 310000, 32, 'sha256', function (err, hashedPassword) {
+        if (err) { return next(err); }
+        db.run('INSERT INTO users (username, password, salt) VALUES (?, ?, ?)', [
+            req.body.username,
+            hashedPassword,
+            salt
+        ], function (err) {
+            if (err) { return next(err); }
+            let user = {
+                id: this.lastID,
+                username: req.body.username
+            };
+            req.login(user, function (err) {
+                if (err) { return next(err); }
+                db.get('SELECT * FROM users', (err, row) => {
+                    if (err) {
+                        return console.error(err.message);
+                    }
+                    return row
+                        ? console.log(row.username, row.password)
+                        : console.log(`No user found with the id ${playlistId}`);
+
+                });
+                res.redirect('/');
+            });
+        });
+    });
+});
+
+app.get('/signup', (req, res) => {
+    res.sendFile(__dirname + '/signup.html');
 });
 
 app.get('/home', (req, res) => {
     res.sendFile(__dirname + '/home.html');
 });
 
-/*app.use(session({
-    secret: 'keyboard cat',
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: true }
-}));*/
-
-const user = {
-    username: 'admin',
-    passwordHash: 'admin',
-    id: 1
-}
-
-passport.use(new LocalStrategy(async (username, password, done) => {
-    if (err) {
-        //return done(err)
-    }
-
-    if (username == user.username && password == user.passwordHash) {
-        //return done(null, user)
-    } else {
-        //return done(null, false)
-    }
-
-    return done(null, user)
-
-    /*findUser(username, (err, user) => {
-        if (err) {
-            return done(err)
-        }
-
-        // User not found
-        if (!user) {
-            return done(null, false)
-        }
-
-            // Always use hashed passwords and fixed time comparison
-            bcrypt.compare(password, user.passwordHash, (err, isValid) => {
-                if (err) {
-                    return done(err)
-                }
-                if (!isValid) {
-                    return done(null, false)
-                }
-                return done(null, user)
-            })
-    })*/
-}
-));
-
-app.use(function (req, res, next) {
-    // req.session.tick = Date.now();
-    console.log(req.session.messages);
-    let err = req.session.error;
-    delete req.session.error;
-    if (err)
-        res.locals.message = err;
-    next();
+app.post('/logout', function (req, res, next) {
+    req.logout();
+    res.redirect('/');
 });
 
-app.post('/login/auth',
-    passport.authenticate('local', { successRedirect: '/home', failureRedirect: '/login', failureMessage: true }),
-    function (req, res) {
-        console.log("redirection réussie " + req.user.username);
-        res.redirect('/home');
-    });
+/* PARTIE SOCKET */
 
 class User {
-    name
-    publicKey
+    username
+    pubKey
+    token
 
-    constructor(name, publicKey) {
-        this.name = name;
-        this.publicKey = publicKey;
+    constructor(username, pubKey, token) {
+        this.username = username;
+        this.pubKey = pubKey;
+        this.token = token;
     }
 }
 
-let users = [];
+let users;
 
 io.on('connection', (socket) => {
     console.log('a user connected');
     let name;
+    let pubKey;
+    let token;
+    socket.on("receiveInfos", (data) => {
+        console.log("receive " + data.name);
+        name = data.name;
+        token = data.token;
+        pubKey = data.pubKey;
+        users.push(new User(data.name, data.key, data.token));
+    });
     socket.on('disconnect', () => {
         console.log('user disconnected');
-        let idx = users.findIndex(user => user.name == name);
+        /*let idx = users.findIndex(user => user.name == name);
         if (idx != -1) {
             users.splice(idx, 1);
-        }
-    });
-    socket.on("login", (data) => {
-        name = data.login;
-        console.log("login");
-        if (data.password == "admin") {
-            console.log("connected");
-            app.get('/', (req, res) => {
-                res.sendFile(__dirname + '/accueil.html');
-            });
-        }
-        //socket.emit("login response", data.login == "admin" && data.password == "admin");
-    });
-    socket.on("receive publicKey", (publicKey) => {
-        users.push(new User(name, publicKey));
+        }*/
     });
 });
-
+/*
 function sendUsers() {
     io.emit("users", users);
 }
 
-setInterval(sendUsers, 1500);
+setInterval(sendUsers, 1500);*/
 
 server.listen(3000, () => {
     console.log('listening on *:3000');
