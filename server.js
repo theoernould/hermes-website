@@ -105,34 +105,36 @@ app.get('/', (req, res) => {
 });
 
 app.post('/signup', function (req, res, next) {
-    let salt = crypto.randomBytes(16);
-    crypto.pbkdf2(req.body.password, salt, 310000, 32, 'sha256', function (err, hashedPassword) {
-        if (err) { return next(err); }
-        db.run('INSERT INTO users (username, password, salt) VALUES (?, ?, ?)', [
-            req.body.username,
-            hashedPassword,
-            salt
-        ], function (err) {
+    if (req.body.username != "general") {
+        let salt = crypto.randomBytes(16);
+        crypto.pbkdf2(req.body.password, salt, 310000, 32, 'sha256', function (err, hashedPassword) {
             if (err) { return next(err); }
-            let user = {
-                id: this.lastID,
-                username: req.body.username
-            };
-            req.login(user, function (err) {
+            db.run('INSERT INTO users (username, password, salt) VALUES (?, ?, ?)', [
+                req.body.username,
+                hashedPassword,
+                salt
+            ], function (err) {
                 if (err) { return next(err); }
-                db.get('SELECT * FROM users', (err, row) => {
-                    if (err) {
-                        return console.error(err.message);
-                    }
-                    return row
-                        ? console.log(row.username, row.password)
-                        : console.log(`No user found with the id ${playlistId}`);
+                let user = {
+                    id: this.lastID,
+                    username: req.body.username
+                };
+                req.login(user, function (err) {
+                    if (err) { return next(err); }
+                    db.get('SELECT * FROM users', (err, row) => {
+                        if (err) {
+                            return console.error(err.message);
+                        }
+                        return row
+                            ? console.log(row.username, row.password)
+                            : console.log(`No user found with the id ${playlistId}`);
 
+                    });
+                    res.redirect('/');
                 });
-                res.redirect('/');
             });
         });
-    });
+    }
 });
 
 app.get('/signup', (req, res) => {
@@ -144,7 +146,9 @@ app.get('/home', (req, res) => {
 });
 
 app.post('/logout', function (req, res, next) {
+    console.log("logout");
     req.logout();
+    res.setHeader("Content-Type", "text/html");
     res.redirect('/');
 });
 
@@ -154,41 +158,64 @@ class User {
     username
     pubKey
     token
+    socket
 
-    constructor(username, pubKey, token) {
+    constructor(username, pubKey, token, socket) {
         this.username = username;
         this.pubKey = pubKey;
         this.token = token;
+        this.socket = socket;
+    }
+
+    getDto() {
+        return {
+            username: this.username,
+            pubKey: this.pubKey
+        };
     }
 }
 
 class Message {
     from
+    to
     content
 
-    constructor(from, content) {
+    constructor(from, to, content) {
         this.from = from;
+        this.to = to;
         this.content = content;
     }
 }
 
-let globalMessages = new Array();
+let messages = new Array();
 
 let users = new Array();
 
 io.on('connection', (socket) => {
     console.log('a user connected');
     let USER;
-    socket.on("sendGlobalMessage", (data) => {
-        console.log("message global reçu " + data);
-        let msg = new Message(USER, data);
-        globalMessages.push(msg);
-        console.log(globalMessages);
+    socket.on("sendMessage", (data) => {
+        console.log(USER.username + " veut envoyer '" + data.content + "' à " + data.to);
+        let msg = new Message(USER.getDto(), data.to, data.content);
+        messages.push(msg);
+        if (data.to == "general") {
+            io.emit("newMessage", msg);
+        } else {
+            let idx = users.findIndex(user => user.username == data.to);
+            if (idx != -1) {
+                let userTo = users[idx];
+                socket.emit("newMessage", msg);
+                userTo.socket.emit("newMessage", msg);
+            }
+        }
     });
     socket.on("receiveInfos", (data) => {
         console.log("receive " + data.name);
-        USER = new User(data.name, data.key, data.token);
+        USER = new User(data.name, data.key, data.token, socket);
         users.push(USER);
+        io.emit("newUser", USER.getDto());
+        socket.emit("getAllUsers", users.map(user => user.getDto()).filter(user => user.username != USER.username));
+        socket.emit("getAllMessages", messages.filter(msg => msg.to == "general" || msg.to == USER.username || msg.from == USER.username));
     });
     socket.on('disconnect', () => {
         console.log('user disconnected');
@@ -201,16 +228,16 @@ io.on('connection', (socket) => {
 });
 
 function sendUsers() {
-    io.emit("users", users);
+    io.emit("getAllUsers", users.map(user => user.getDto()));
 }
 
-setInterval(sendUsers, 1500);
+//setInterval(sendUsers, 1500);
 
 function sendMessages() {
-    io.emit("globalMessages", globalMessages);
+    io.emit("getAllMessages", messages.filter(msg => msg.to == "general"));
 }
 
-setInterval(sendMessages, 1500);
+//setInterval(sendMessages, 1500);
 
 server.listen(3000, () => {
     console.log('listening on *:3000');

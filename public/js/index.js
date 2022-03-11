@@ -35,48 +35,6 @@ async function decryptMessage(msg, privateKey) {
 const NAME = sessionStorage.getItem("name");
 const TOKEN = sessionStorage.getItem("token");
 
-class User {
-  username
-  pubKey
-
-  constructor(username, pubKey) {
-    this.username = username;
-    this.pubKey = pubKey;
-  }
-}
-
-let usersList = new Array();
-
-let socket = io();
-
-socket.on('users', (users) => {
-  let $users = $("#users");
-  $users.html("");
-  console.log("récupération des utilisateurs");
-  users.forEach(user => {
-    let usr = new User(user.username, user.pubKey);
-    usersList.push(usr);
-    let $line = $("<span>");
-    $line.html(usr.username);
-    $line.appendTo($users);
-    $line.addClass("discussion");
-  });
-});
-
-socket.on('globalMessages', (messages) => {
-  let $messages = $("#messages");
-  $messages.html("");
-  console.log("récupération des messages globaux");
-  console.log(messages);
-  messages.forEach(msg => {
-    let $line = $("<div>");
-    $("<span>").html(msg.from.username).appendTo($line);
-    $("<p>").html(msg.content).appendTo($line);
-    $line.addClass("message");
-    $line.appendTo($messages);
-  });
-});
-
 async function s() {
 
   const {
@@ -94,15 +52,28 @@ async function s() {
 
 s();
 
-let channel = "general";
+let $channelChoosen = $("#general");
+$channelChoosen.addClass("active");
+
+$("#general").on("click", userHandler);
+
+$("#deconnexion").on("click", (e) => {
+  fetch('/logout', { method: "POST" }).then((res) => {
+    window.location.href = "/";
+  });
+});
 
 $('#bottom').on('submit', (e) => {
   e.preventDefault();
   let $messageInput = $("#messageContent");
   let content = $messageInput.val();
-  if (channel == "general") {
-    socket.emit("sendGlobalMessage", content);
-  }
+  let to = $channelChoosen.attr("id");
+  console.log("to : " + to);
+  socket.emit("sendMessage", {
+    to: to,
+    content: content
+  });
+  $messageInput.val("");
   /*let messageOriginal = $("#login").val();
   console.log("original : " + messageOriginal);
  
@@ -136,4 +107,109 @@ $('#bottom').on('submit', (e) => {
   });
   $("#login").html("");
   $("#password").html("");*/
+});
+
+class User {
+  username
+  pubKey
+
+  constructor(username, pubKey) {
+    this.username = username;
+    this.pubKey = pubKey;
+  }
+}
+
+let usersList = new Array();
+
+class Message {
+  from
+  to
+  content
+
+  constructor(from, to, content) {
+    this.from = from;
+    this.to = to;
+    this.content = content;
+  }
+}
+
+let messagesList = new Array();
+
+let socket = io();
+
+function clearMessages() {
+  $("#messages").html("");
+}
+
+function printMessage(msg) {
+  let $messages = $("#messages");
+  let $line = $("<div>");
+  $("<span>").html(msg.from.username).appendTo($line);
+  $("<p>").html(msg.content).appendTo($line);
+  $line.addClass("message");
+  $line.appendTo($messages);
+}
+
+function clearUsers() {
+  $("#users").html("");
+}
+
+function printUser(user) {
+  let $users = $("#users");
+  usersList.push(user);
+  let $line = $("<span>");
+  $line.attr("id", user.username);
+  $line.html(user.username);
+  $line.appendTo($users);
+  $line.addClass("discussion");
+  $line.on("click", userHandler);
+}
+
+function userHandler(e) {
+  $channelChoosen.removeClass("active");
+  $channelChoosen = $(e.currentTarget);
+  $channelChoosen.addClass("active");
+  let channel = $channelChoosen.attr("id");
+  clearMessages();
+  messagesList.forEach(msg => {
+    console.log("channel actuel : " + channel + " | msg " + msg);
+    if ((msg.to == "general" && channel == "general") || (msg.from.username == channel && msg.to == NAME) || (msg.from.username == NAME && msg.to == channel)) {
+      printMessage(msg);
+    }
+  });
+}
+
+socket.on("newUser", (user) => {
+  printUser(user);
+});
+
+socket.on("getAllUsers", (users) => {
+  clearUsers();
+  users.forEach(user => {
+    printUser(user);
+  });
+});
+
+socket.on("newMessage", (msg) => {
+  console.log("nouveau message : " + msg);
+  messagesList.push(msg);
+  if (msg.from.username != NAME) {
+    const audio = new Audio("/sounds/notif.mp3");
+    audio.volume = 0.25;
+    audio.play();
+  }
+  let channel = $channelChoosen.attr("id");
+  if ((msg.to == "general" && channel == "general") || (msg.from.username == channel && msg.to == NAME) || (msg.from.username == NAME && msg.to == channel)) {
+    printMessage(msg);
+  }
+});
+
+socket.on('getAllMessages', (messages) => {
+  messages.forEach(msg => {
+    messagesList.push(msg);
+    let channel = $channelChoosen.attr("id");
+    if ((msg.to == "general" && channel == "general") || (msg.from.username == channel && msg.to == NAME) || (msg.from.username == NAME && msg.to == channel)) {
+      printMessage(msg);
+    }
+  });
 });

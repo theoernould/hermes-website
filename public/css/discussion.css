@@ -23,29 +23,43 @@ html, body {
     flex-direction: column;
     height: 100%;
     width: 20%;
+    align-items: center;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 #users {
     width: 100%;
-    height: 80%;
+    height: 70%;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    align-items: center;
 }
 
 .discussion {
     padding: 10px;
     box-sizing: border-box;
     padding-left: 10px;
-    width: 100%;
+    width: 95%;
     background-color: #d0dcfc44;
     border-radius: 4px;
+}
+
+#deconnexion {
+    background-color: #ff1010;
+}
+
+#deconnexion:hover {
+    background-color: #ff5050;
 }
 
 .discussion:not(:last-child) {
     margin-bottom: 2.5%;
 }
 
-.discussion:hover {
+.discussion:not(.active):hover {
     background-color: #d0dcfcd8;
     cursor: pointer;
 }
@@ -63,14 +77,22 @@ html, body {
 }
 
 #messages {
+    padding:2%;
     height:90%;
     width:100%;
     display:flex;
     flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+#messages div:not(:last-child) {
+    margin-bottom:2%;
 }
 
 .message {
-    width:100%;
+    width:95%;
     padding:2%;
     background-color: #d0dcfc44;
     border-radius: 4px;
@@ -80,6 +102,10 @@ html, body {
 
 .message span {
     font-weight: bold;
+}
+
+.message p {
+    text-align:justify;
 }
 
 .message:not(:last-child) {
