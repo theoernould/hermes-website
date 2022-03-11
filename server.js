@@ -41,23 +41,25 @@ app.use(session({
     secret: 'keyboard cat',
     resave: false,
     saveUninitialized: false,
-    store: new SQLiteStore({ db: 'sessions.db', dir: './db' })
+    //store: new SQLiteStore({ db: 'sessions.db', dir: './db' }),
+    cookie: { secure: true }
 }));
 app.use(passport.authenticate('session'));
 
-app.use(express.static(__dirname + "/public", {
+app.use(express.static(__dirname + "/public"/*, {
     index: false,
     immutable: true,
-    cacheControl: true,
-    maxAge: "30d"
-}));
-
+    cacheControl: true
+    //maxAge: "30d"
+}*/));
+/*
 app.use(session({
     secret: 'r8q,+&1LM3)CD*zAGpx1xm{NeQhc;#',
     resave: false,
     saveUninitialized: true,
     cookie: { maxAge: 60 * 60 * 1000 } // 1 hour
 }));
+*/
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(passport.initialize());
 app.use(passport.session());
@@ -160,34 +162,55 @@ class User {
     }
 }
 
-let users;
+class Message {
+    from
+    content
+
+    constructor(from, content) {
+        this.from = from;
+        this.content = content;
+    }
+}
+
+let globalMessages = new Array();
+
+let users = new Array();
 
 io.on('connection', (socket) => {
     console.log('a user connected');
-    let name;
-    let pubKey;
-    let token;
+    let USER;
+    socket.on("sendGlobalMessage", (data) => {
+        console.log("message global reçu " + data);
+        let msg = new Message(USER, data);
+        globalMessages.push(msg);
+        console.log(globalMessages);
+    });
     socket.on("receiveInfos", (data) => {
         console.log("receive " + data.name);
-        name = data.name;
-        token = data.token;
-        pubKey = data.pubKey;
-        users.push(new User(data.name, data.key, data.token));
+        USER = new User(data.name, data.key, data.token);
+        users.push(USER);
     });
     socket.on('disconnect', () => {
         console.log('user disconnected');
-        /*let idx = users.findIndex(user => user.name == name);
+        let idx = users.findIndex(user => user.token == USER.token);
         if (idx != -1) {
             users.splice(idx, 1);
-        }*/
+        }
+        console.log(users);
     });
 });
-/*
+
 function sendUsers() {
     io.emit("users", users);
 }
 
-setInterval(sendUsers, 1500);*/
+setInterval(sendUsers, 1500);
+
+function sendMessages() {
+    io.emit("globalMessages", globalMessages);
+}
+
+setInterval(sendMessages, 1500);
 
 server.listen(3000, () => {
     console.log('listening on *:3000');
