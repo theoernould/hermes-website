@@ -213,6 +213,7 @@ io.on('connection', (socket) => {
         console.log("receive " + data.name);
         USER = new User(data.name, data.key, data.token, socket);
         users.push(USER);
+        console.log(USER);
         io.emit("newUser", USER.getDto());
         socket.emit("getAllUsers", users.map(user => user.getDto()).filter(user => user.username != USER.username));
         socket.emit("getAllMessages", messages.filter(msg => msg.to == "general" || msg.to == USER.username || msg.from == USER.username));
@@ -223,7 +224,7 @@ io.on('connection', (socket) => {
         if (idx != -1) {
             users.splice(idx, 1);
         }
-        console.log(users);
+        io.emit("userDisconnected", USER.getDto());
     });
 });
 
