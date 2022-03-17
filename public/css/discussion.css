@@ -87,7 +87,7 @@ html, body {
     overflow-y: auto;
 }
 
-#messages div:not(:last-child) {
+#messages>div:not(:last-child) {
     margin-bottom:2%;
 }
 
@@ -100,8 +100,13 @@ html, body {
     flex-direction: column;
 }
 
-.message span {
-    font-weight: bold;
+.message div span:first-child {
+    font-weight:bold;
+}
+
+.message div span:last-child {
+    font-style:italic;
+    margin-left:1%;
 }
 
 .message p {

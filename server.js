@@ -1,8 +1,11 @@
+const fs = require('fs');
+const key = fs.readFileSync('./keys/key.pem');
+const cert = fs.readFileSync('./keys/cert.pem');
 const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
-const http = require('http');
-const server = http.createServer(app);
+const https = require('https');
+const server = https.createServer({key: key, cert: cert }, app);
 const { Server } = require("socket.io");
 const io = new Server(server);
 const session = require('express-session');
@@ -64,9 +67,12 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(passport.initialize());
 app.use(passport.session());
 
+let users = new Array();
+
 passport.use(new LocalStrategy(
     // function of username, password, done(callback)
     function (username, password, done) {
+        if(users.findIndex(user => user.username == username) != -1) return done(null, false, {message : 'already logged in'});
         db.get('SELECT * FROM users WHERE username = ?', [username], function (err, row) {
             if (err) { return done(err); }
             if (!row) { return done(null, false, { message: 'Incorrect username or password.' }); }
@@ -105,7 +111,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/signup', function (req, res, next) {
-    if (req.body.username != "general") {
+    if (req.body.username != "general" && req.body.username.length <= 20) {
         let salt = crypto.randomBytes(16);
         crypto.pbkdf2(req.body.password, salt, 310000, 32, 'sha256', function (err, hashedPassword) {
             if (err) { return next(err); }
@@ -134,6 +140,8 @@ app.post('/signup', function (req, res, next) {
                 });
             });
         });
+    } else {
+        res.redirect('/signup');
     }
 });
 
@@ -141,9 +149,15 @@ app.get('/signup', (req, res) => {
     res.sendFile(__dirname + '/signup.html');
 });
 
-app.get('/home', (req, res) => {
+app.get('/home', loginRequired, (req, res) => {
     res.sendFile(__dirname + '/home.html');
 });
+
+function loginRequired(req, res, next) {
+    if (!req.session.passport || !req.session.passport.user)
+      return res.status(401).json({status: 'Please log in'});
+    return next();
+  }
 
 app.post('/logout', function (req, res, next) {
     console.log("logout");
@@ -176,27 +190,29 @@ class User {
 }
 
 class Message {
-    from
-    to
-    content
+  from
+  to
+  content
+  timestamp
+  crypted
 
-    constructor(from, to, content) {
-        this.from = from;
-        this.to = to;
-        this.content = content;
-    }
+  constructor(from, to, content, timestamp, crypted) {
+    this.from = from;
+    this.to = to;
+    this.content = content;
+    this.timestamp = timestamp;
+    this.crypted = crypted;
+  }
 }
 
 let messages = new Array();
-
-let users = new Array();
 
 io.on('connection', (socket) => {
     console.log('a user connected');
     let USER;
     socket.on("sendMessage", (data) => {
         console.log(USER.username + " veut envoyer '" + data.content + "' à " + data.to);
-        let msg = new Message(USER.getDto(), data.to, data.content);
+        let msg = new Message(USER.getDto(), data.to, data.content, Date.now(), data.crypted);
         messages.push(msg);
         if (data.to == "general") {
             io.emit("newMessage", msg);
@@ -210,7 +226,7 @@ io.on('connection', (socket) => {
         }
     });
     socket.on("receiveInfos", (data) => {
-        console.log("receive " + data.name);
+        if(data.name.length >= 20) socket.disconnect();
         USER = new User(data.name, data.key, data.token, socket);
         users.push(USER);
         console.log(USER);
@@ -226,19 +242,10 @@ io.on('connection', (socket) => {
         }
         io.emit("userDisconnected", USER.getDto());
     });
+    socket.onAny((event, ...args) => {
+        console.log(event, args);
+    });
 });
-
-function sendUsers() {
-    io.emit("getAllUsers", users.map(user => user.getDto()));
-}
-
-//setInterval(sendUsers, 1500);
-
-function sendMessages() {
-    io.emit("getAllMessages", messages.filter(msg => msg.to == "general"));
-}
-
-//setInterval(sendMessages, 1500);
 
 server.listen(3000, () => {
     console.log('listening on *:3000');
